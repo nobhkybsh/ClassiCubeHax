@@ -243,6 +243,8 @@ void HacksComp_SetFlying(struct HacksComp* hacks, cc_bool flying) {
 }
 
 void HacksComp_SetNoclip(struct HacksComp* hacks, cc_bool noclip) {
+	hacks->CanNoclip = true;
+	hacks->CanAnyHacks = true;
 	if (hacks->Noclip == noclip) return;
 	hacks->Noclip = noclip;
 	Event_RaiseVoid(&UserEvents.HacksStateChanged);
