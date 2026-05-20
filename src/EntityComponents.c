@@ -213,20 +213,17 @@ static void HacksComp_ParseAllFlag(struct HacksComp* hacks, const char* include,
 }
 
 void HacksComp_RecheckFlags(struct HacksComp* hacks) {
-	/* Can use hacks by default (also case with WoM), no need to check +hax */
-	cc_bool hax = !String_ContainsConst(&hacks->HacksFlags, "-hax");
-	HacksComp_SetAll(hacks, hax);
-	hacks->CanBePushed   = true;
+	/* Логика парсинга MOTD вырезана. Принудительно разрешаем все хаки. */
+	HacksComp_SetAll(hacks, true);
+	hacks->CanFly            = true;
+	hacks->CanNoclip         = true;
+	hacks->CanSpeed          = true;
+	hacks->CanRespawn        = true;
+	hacks->CanPushbackBlocks = true;
+	hacks->CanUseThirdPerson = true;
+	hacks->CanSeeAllNames    = true;
+	hacks->CanBePushed       = true;
 
-	HacksComp_ParseFlag(hacks, "+fly",         "-fly",         &hacks->CanFly);
-	HacksComp_ParseFlag(hacks, "+noclip",      "-noclip",      &hacks->CanNoclip);
-	HacksComp_ParseFlag(hacks, "+speed",       "-speed",       &hacks->CanSpeed);
-	HacksComp_ParseFlag(hacks, "+respawn",     "-respawn",     &hacks->CanRespawn);
-	HacksComp_ParseFlag(hacks, "+push",        "-push",        &hacks->CanBePushed);
-	HacksComp_ParseFlag(hacks, "+thirdperson", "-thirdperson", &hacks->CanUseThirdPerson);
-	HacksComp_ParseFlag(hacks, "+names",       "-names",       &hacks->CanSeeAllNames);
-
-	if (hacks->IsOp) HacksComp_ParseAllFlag(hacks, "+ophax", "-ophax");
 	hacks->BaseHorSpeed = HacksComp_ParseFlagFloat("horspeed=", hacks);
 	hacks->MaxHorSpeed  = HacksComp_ParseFlagFloat("maxspeed=", hacks);
 	hacks->MaxJumps     = HacksComp_ParseFlagInt("jumps=",      hacks);
@@ -234,17 +231,7 @@ void HacksComp_RecheckFlags(struct HacksComp* hacks) {
 }
 
 void HacksComp_Update(struct HacksComp* hacks) {
-	if (!hacks->CanFly || !hacks->Enabled) {
-		HacksComp_SetFlying(hacks, false); 
-		hacks->FlyingDown = false; hacks->FlyingUp = false;
-	}
-	if (!hacks->CanNoclip || !hacks->Enabled) {
-		HacksComp_SetNoclip(hacks, false);
-	}
-	if (!hacks->CanSpeed || !hacks->Enabled) {
-		hacks->Speeding = false; hacks->HalfSpeeding = false;
-	}
-
+	/* Вырезаны все проверки, сбрасывающие полет/ноуклип обратно в false */
 	hacks->CanDoubleJump = hacks->Enabled && hacks->CanSpeed;
 	Event_RaiseVoid(&UserEvents.HackPermsChanged);
 }
@@ -488,7 +475,6 @@ void LocalInterpComp_AdvanceState(struct InterpComp* interp, struct Entity* e) {
 /*########################################################################################################################*
 *---------------------------------------------------CollisionsComponent---------------------------------------------------*
 *#########################################################################################################################*/
-/* Whether a collision occurred with any horizontal sides of any blocks */
 cc_bool Collisions_HitHorizontal(struct CollisionsComp* comp) {
 	return comp->HitXMin || comp->HitXMax || comp->HitZMin || comp->HitZMax;
 }
@@ -628,7 +614,6 @@ static void Collisions_CollideWithReachableBlocks(struct CollisionsComp* comp, i
 	float tx, ty, tz;
 	int i, block;
 
-	/* Reset collision detection states */
 	wasOn = entity->OnGround;
 	entity->OnGround = false;
 	comp->HitXMin = false; comp->HitYMin = false; comp->HitZMin = false;
@@ -636,7 +621,6 @@ static void Collisions_CollideWithReachableBlocks(struct CollisionsComp* comp, i
 
 	size = entity->Size;
 	for (i = 0; i < count; i++) {
-		/* Unpack the block and coordinate data */
 		state  = Searcher_States[i];
 		bPos.x = state.x >> 3; bPos.y = state.y >> 4; bPos.z = state.z >> 3;
 		block  = (state.x & 0x7) | (state.y & 0xF) << 3 | (state.z & 0x7) << 7;
@@ -645,20 +629,16 @@ static void Collisions_CollideWithReachableBlocks(struct CollisionsComp* comp, i
 		Vec3_Add(&blockBB.Max, &Blocks.MaxBB[block], &bPos);
 		if (!AABB_Intersects(extentBB, &blockBB)) continue;
 
-		/* Recheck time to collide with block (as colliding with blocks modifies this) */
 		Searcher_CalcTime(&entity->Velocity, entityBB, &blockBB, &tx, &ty, &tz);
 		if (tx > 1.0f || ty > 1.0f || tz > 1.0f) {
 			Platform_LogConst("t > 1 in physics calculation.. this shouldn't have happened.");
 		}
 
-		/* Calculate the location of the entity when it collides with this block */
 		v = entity->Velocity; 
 		v.x *= tx; v.y *= ty; v.z *= tz;
-		/* Inlined ABBB_Offset */
 		Vec3_Add(&finalBB.Min, &entityBB->Min, &v);
 		Vec3_Add(&finalBB.Max, &entityBB->Max, &v);
 
-		/* if we have hit the bottom of a block, we need to change the axis we test first */
 		if (!comp->HitYMin) {
 			if (finalBB.Min.y + COLLISIONS_ADJ >= blockBB.Max.y) {
 				Collisions_ClipYMax(comp, &blockBB, entityBB, extentBB, &size);
@@ -676,7 +656,6 @@ static void Collisions_CollideWithReachableBlocks(struct CollisionsComp* comp, i
 			continue;
 		}
 
-		/* if flying or falling, test the horizontal axes first */
 		if (finalBB.Min.x + COLLISIONS_ADJ >= blockBB.Max.x) {
 			Collisions_ClipXMax(comp, &blockBB, entityBB, wasOn, &finalBB, extentBB, &size);
 		} else if (finalBB.Max.x - COLLISIONS_ADJ <= blockBB.Min.x) {
@@ -693,7 +672,6 @@ static void Collisions_CollideWithReachableBlocks(struct CollisionsComp* comp, i
 	}
 }
 
-/* TODO: test for corner cases, and refactor this */
 void Collisions_MoveAndWallSlide(struct CollisionsComp* comp) {
 	struct Entity* e = comp->Entity;
 	struct AABB entityBB, entityExtentBB;
@@ -734,7 +712,7 @@ void PhysicsComp_UpdateVelocityState(struct PhysicsComp* comp) {
 	cc_bool pastJumpPoint;
 
 	if (hacks->Floating) {
-		entity->Velocity.y = 0.0f; /* eliminate the effect of gravity */
+		entity->Velocity.y = 0.0f; 
 		dir = (hacks->FlyingUp || comp->Jumping) ? 1 : (hacks->FlyingDown ? -1 : 0);
 
 		entity->Velocity.y += 0.12f * dir;
@@ -767,7 +745,6 @@ void PhysicsComp_UpdateVelocityState(struct PhysicsComp* comp) {
 			if (hacks->Speeding     && hacks->CanSpeed) entity->Velocity.y += 0.04f;
 			if (hacks->HalfSpeeding && hacks->CanSpeed) entity->Velocity.y += 0.02f;
 		} else if (pastJumpPoint) {
-			/* either A) climb up solid on side B) jump bob in water */
 			if (Collisions_HitHorizontal(comp->Collisions)) {
 				entity->Velocity.y += touchLava ? 0.30f : 0.13f;
 			} else if (comp->CanLiquidJump) {
@@ -825,7 +802,6 @@ static void PhysicsComp_MoveHor(struct PhysicsComp* comp, Vec3 vel, float factor
 	if (dist < 0.00001f) return;
 	if (dist < 1.0f) dist = 1.0f;
 
-	/* entity.Velocity += vel * (factor / dist) */
 	entity = comp->Entity;
 	Vec3_Mul1By(&vel, factor / dist);
 	Vec3_AddBy(&entity->Velocity, &vel);
@@ -852,7 +828,6 @@ static void PhysicsComp_MoveFlying(struct PhysicsComp* comp, Vec3 vel, float fac
 
 	PhysicsComp_MoveHor(comp, vel, factor);
 	yVel = Math_SqrtF(entity->Velocity.x * entity->Velocity.x + entity->Velocity.z * entity->Velocity.z);
-	/* make horizontal speed the same as vertical speed */
 	if ((vel.x != 0.0f || vel.z != 0.0f) && yVel > 0.001f) {
 		entity->Velocity.y = 0.0f;
 		yMul = 1.0f;
@@ -920,7 +895,7 @@ static float PhysicsComp_GetBaseSpeed(struct PhysicsComp* comp) {
 	comp->UseLiquidGravity = false;
 
 	baseModifier  = PhysicsComp_LowestModifier(comp, &bounds, false);
-	bounds.Min.y -= 0.5f/16.0f; /* also check block standing on */
+	bounds.Min.y -= 0.5f/16.0f; 
 	solidModifier = PhysicsComp_LowestModifier(comp, &bounds, true);
 
 	if (baseModifier == MATH_LARGENUM && solidModifier == MATH_LARGENUM) return 1.0f;
@@ -940,12 +915,8 @@ void PhysicsComp_PhysicsTick(struct PhysicsComp* comp, Vec3 vel) {
 	baseSpeed = PhysicsComp_GetBaseSpeed(comp);
 	verSpeed  = baseSpeed * (PhysicsComp_GetSpeed(hacks, 8.0f, hacks->CanSpeed) / 5.0f);
 	horSpeed  = baseSpeed * PhysicsComp_GetSpeed(hacks,  8.0f / 5.0f, true) * hacks->BaseHorSpeed;
-	/* previously horSpeed used to be multiplied by factor of 0.02 in last case */
-	/* it's now multiplied by 0.1, so need to divide by 5 so user speed modifier comes out same */
 
-	/* TODO: this is a temp fix to avoid crashing for high horizontal speed */
 	Math_Clamp(horSpeed, -75.0f, 75.0f);
-	/* vertical speed never goes below: base speed * 1.0 */
 	if (verSpeed < baseSpeed) verSpeed = baseSpeed;
 
 	womSpeedBoost = hacks->CanDoubleJump && hacks->WOMStyleHacks;
@@ -974,7 +945,6 @@ void PhysicsComp_PhysicsTick(struct PhysicsComp* comp, Vec3 vel) {
 		}
 
 		if (PhysicsComp_OnIce(entity) && !hacks->Floating) {
-			/* limit components to +-0.25f by rescaling vector to [-0.25, 0.25] */
 			if (Math_AbsF(entity->Velocity.x) > 0.25f || Math_AbsF(entity->Velocity.z) > 0.25f) {
 				float xScale = Math_AbsF(0.25f / entity->Velocity.x);
 				float zScale = Math_AbsF(0.25f / entity->Velocity.z);
@@ -984,7 +954,7 @@ void PhysicsComp_PhysicsTick(struct PhysicsComp* comp, Vec3 vel) {
 				entity->Velocity.z *= scale;
 			}
 		} else if (entity->OnGround || hacks->Flying) {
-			Vec3_Mul3By(&entity->Velocity, &comp->groundFriction); /* air drag or ground friction */
+			Vec3_Mul3By(&entity->Velocity, &comp->groundFriction); 
 		}
 	}
 
@@ -992,25 +962,17 @@ void PhysicsComp_PhysicsTick(struct PhysicsComp* comp, Vec3 vel) {
 }
 
 static double PhysicsComp_YPosAt(int t, float u) {
-	/* v(t, u) = (4 + u) * (0.98^t) - 4, where u = initial velocity */
-	/* x(t, u) = Σv(t, u) from 0 to t (since we work in discrete timesteps) */
-	/* plugging into Wolfram Alpha gives 1 equation as */
-	/* (0.98^t) * (-49u - 196) - 4t + 50u + 196 */
-	double a = Math_Exp2(-0.02914633510256746 * t); /* ~0.98^t */
+	double a = Math_Exp2(-0.02914633510256746 * t); 
 	return a * (-49 * u - 196) - 4 * t + 50 * u + 196;
 }
 
 double PhysicsComp_CalcMaxHeight(float u) {
-	/* equation below comes from solving diff(x(t, u))= 0 */
-	/* We only work in discrete timesteps, so test both rounded up and down */
 	double t = 34.30961849 * Math_Log2(0.247483075 * u + 0.9899323);
 	double value_floor = PhysicsComp_YPosAt((int)t,     u);
 	double value_ceil  = PhysicsComp_YPosAt((int)t + 1, u);
 	return max(value_floor, value_ceil);
 }
 
-/* Calculates the jump velocity required such that when user presses
-the jump binding they will be able to jump up to the given height. */
 float PhysicsComp_CalcJumpVelocity(float jumpHeight) {
 	float jumpVel = 0.0f;
 	if (jumpHeight == 0.0f) return jumpVel;
@@ -1044,11 +1006,10 @@ void PhysicsComp_DoEntityPush(struct Entity* entity) {
 		dir.x = other->Position.x - entity->Position.x;
 		dir.z = other->Position.z - entity->Position.z;
 		dist = dir.x * dir.x + dir.z * dir.z;
-		if (dist < 0.002f || dist > 1.0f) continue; /* TODO: range needs to be lower? */
+		if (dist < 0.002f || dist > 1.0f) continue; 
 
 		Vec3_Normalise(&dir);
-		pushStrength = (other->PushStrength - dist) / 32.0f; /* TODO: should be 24/25 */
-		/* entity.Velocity -= dir * pushStrength */
+		pushStrength = (other->PushStrength - dist) / 32.0f; 
 		Vec3_Mul1By(&dir, pushStrength);
 		Vec3_SubBy(&entity->Velocity, &dir);
 	}
@@ -1091,11 +1052,9 @@ static void SoundComp_GetSound(struct LocalPlayer* p) {
 	sounds_type = SOUND_NONE;
 	sounds_anyNonAir = false;
 
-	/* first check surrounding liquids/gas for sounds */
 	Entity_TouchesAny(&bounds, Sounds_CheckNonSolid);
 	if (sounds_type != SOUND_NONE) return;
 
-	/* then check block standing on (feet) */
 	pos = p->Base.next.pos; pos.y -= 0.01f;
 	IVec3_Floor(&coords, &pos);
 	blockUnder = World_SafeGetBlock(coords.x, coords.y, coords.z);
@@ -1107,7 +1066,6 @@ static void SoundComp_GetSound(struct LocalPlayer* p) {
 		sounds_anyNonAir = true; sounds_type = typeUnder; return;
 	}
 
-	/* then check all solid blocks at feet */
 	bounds.Max.y = bounds.Min.y = pos.y;
 	Entity_TouchesAny(&bounds, Sounds_CheckSolid);
 }
@@ -1119,10 +1077,8 @@ static cc_bool SoundComp_ShouldPlay(struct LocalPlayer* p, Vec3 soundPos) {
 
 	Vec3_Sub(&delta, &sounds_lastPos, &soundPos);
 	distSq = Vec3_LengthSquared(&delta);
-	/* just play every certain block interval when not animating */
 	if (p->Base.Anim.Swing < 0.999f) return distSq > 1.75f * 1.75f;
 
-	/* have our legs just crossed over the '0' point? */
 	if (Camera.Active->isThirdPerson) {
 		oldLegRot = Math_CosF(p->Base.Anim.WalkTimeO);
 		newLegRot = Math_CosF(p->Base.Anim.WalkTimeN);
