@@ -25,6 +25,7 @@
 #include "Protocol.h"
 #include "AxisLinesRenderer.h"
 #include "Picking.h"
+#include "MineSweeper_TAS.h"
 
 static cc_bool input_buttonsDown[3];
 static int input_pickingId = -1;
@@ -495,6 +496,9 @@ void InputHandler_Tick(float delta) {
 	} else if (middle) {
 		InputHandler_PickBlock();
 	}
+	
+	/* Обновление MineSweeper TAS */
+	MineSweeper_Update(delta);
 }
 
 
@@ -854,6 +858,16 @@ static void OnInputDown(void* obj, int key, cc_bool was, struct InputDevice* dev
 		Game_ScreenshotRequested = true; return;
 	}
 	
+	/* MineSweeper TAS активация на Numpad 5 */
+	if (key == CCKEY_KP5 && !was) {
+		if (MineSweeper.active) {
+			MineSweeper_Deactivate();
+		} else {
+			MineSweeper_Activate();
+		}
+		return;
+	}
+	
 	triggered = false;
 	for (i = 0; !was && i < BIND_COUNT; i++)
 	{
@@ -998,6 +1012,8 @@ static void OnInit(void) {
 	Bind_OnReleased[BIND_BACK]    = Player_ReleaseDown;
 	Bind_OnReleased[BIND_LEFT]    = Player_ReleaseLeft;
 	Bind_OnReleased[BIND_RIGHT]   = Player_ReleaseRight;
+	
+	MineSweeper_Init();
 }
 
 static void OnFree(void) {
